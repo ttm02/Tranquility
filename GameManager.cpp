@@ -124,6 +124,7 @@ bool Turn::is_valid(const PlayArea &area, const std::vector<std::unique_ptr<Card
                 }
             }
         }
+        return true;
     }
 
 
