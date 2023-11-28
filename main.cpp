@@ -20,7 +20,7 @@ bool simulate_game(R &rng, unsigned int num_players) {
     std::vector<std::unique_ptr<PlayerAgent>> strategies;
 
     for (int i = 0; i < 2; ++i) {
-        strategies.push_back(std::make_unique<BinaryPartitionStrategy>(i));
+        strategies.push_back(std::make_unique<BinaryPartitionStrategy>(rng, i));
     }
 
     bool game_won = GameManager::RunNewGame(std::move(strategies), rng);
