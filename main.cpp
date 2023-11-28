@@ -15,7 +15,7 @@
 #include "BinaryPartitionStrategy.h"
 
 template<class R>
-bool simulate_game(R rng, unsigned int num_players) {
+bool simulate_game(R &rng, unsigned int num_players) {
 
     std::vector<std::unique_ptr<PlayerAgent>> strategies;
 
