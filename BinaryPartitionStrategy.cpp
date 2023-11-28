@@ -9,6 +9,9 @@
 #include <iostream>
 
 
+//#define PRINT_TURNS
+
+
 //Problem: one player ran out of cards, The other player had finish and the required missing card (including spare cards to fit it in) in hand
 
 Turn BinaryPartitionStrategy::make_turn(const GameManager &GM, const std::vector<std::unique_ptr<Card>> &hand) {
@@ -66,15 +69,21 @@ Turn BinaryPartitionStrategy::make_turn(const GameManager &GM, const std::vector
 
     auto fill_gap = find_best_adjacent(GM, hand);
 
+#ifdef PRINT_TURNS
     std::cout << "Safe to discard: ";
+#endif
     int num_safe_discards = 0;
     for (int i = 0; i < hand.size(); ++i) {
         if (is_card_safe_to_discard(GM, i, hand)) {
             num_safe_discards++;
+#ifdef  PRINT_TURNS
             std::cout << hand[i]->value << ", ";
+#endif
         }
     }
+#ifdef PRINT_TURNS
     std::cout << "\n";
+#endif
 
     //check for large draw stack size difference
     bool has_lowest_number_of_cards = true;
@@ -99,9 +108,11 @@ Turn BinaryPartitionStrategy::make_turn(const GameManager &GM, const std::vector
 
 
     if (num_safe_discards >= std::get<0>(fill_gap) && not should_perform_middle_turn) {
+#ifdef PRINT_TURNS
         std::cout << "fill gap position: " << std::get<1>(fill_gap) << " Card To Play: "
                                                                     << hand[std::get<2>(fill_gap)]->value
                                                                     << " Discard: ";
+#endif
         // can safetly fill a gap
         // fill a gap turn
         turn.position_played = std::get<1>(fill_gap);
@@ -113,18 +124,23 @@ Turn BinaryPartitionStrategy::make_turn(const GameManager &GM, const std::vector
                 num_to_discard--;
                 turn.cards_to_discard.push_back(i);
                 discarded_values.push_back(hand[i]->value);
+#ifdef PRINT_TURNS
                 std::cout << hand[i]->value << ", ";
+#endif
             }
         }
+#ifdef PRINT_TURNS
         std::cout << "\n";
+#endif
         return turn;
     }
 
     // fill a middle turn
     if (std::get<1>(middle_gap) != -1) {
+#ifdef PRINT_TURNS
         std::cout << "middle position: " << std::get<1>(middle_gap) << " Card To Play: "
                   << hand[std::get<2>(middle_gap)]->value << "\n";
-
+#endif
 
         turn.position_played = std::get<1>(middle_gap);
         turn.card_to_play = std::get<2>(middle_gap);
@@ -140,7 +156,9 @@ Turn BinaryPartitionStrategy::make_turn(const GameManager &GM, const std::vector
 
     if (num_safe_discards >= 2) {
         // do a discard turn
+#ifdef PRINT_TURNS
         std::cout << "Discard 2: ";
+#endif
         int num_to_discard = 2;
         for (int i = 0; i < hand.size() && num_to_discard > 0; ++i) {
             if (is_card_safe_to_discard(GM, i, hand)) {
@@ -148,15 +166,20 @@ Turn BinaryPartitionStrategy::make_turn(const GameManager &GM, const std::vector
                 num_to_discard--;
                 turn.cards_to_discard.push_back(i);
                 discarded_values.push_back(hand[i]->value);
+#ifdef PRINT_TURNS
                 std::cout << hand[i]->value << ", ";
+#endif
             }
         }
+#ifdef PRINT_TURNS
         std::cout << "\n";
+#endif
         return turn;
     }
 
 
     num_unsafe_turns++;
+    std::cout << "Invalid Turn:\n";
 
     // stop to see what is happening
     std::cout << "Confirm Turn ";
