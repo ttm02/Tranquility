@@ -9,11 +9,10 @@
 #include <iostream>
 
 
-#define PRINT_TURNS
+//#define PRINT_TURNS
 
 
 //Problem: one player ran out of cards, The other player had finish and the required missing card (including spare cards to fit it in) in hand
-
 Turn BinaryPartitionStrategy::make_turn(const GameManager &GM, const std::vector<std::unique_ptr<Card>> &hand) {
 
     //DEBUG:
@@ -123,8 +122,8 @@ Turn BinaryPartitionStrategy::make_turn(const GameManager &GM, const std::vector
     if (num_safe_discards >= std::get<0>(fill_gap) && not should_perform_middle_turn) {
 #ifdef PRINT_TURNS
         std::cout << "fill gap position: " << std::get<1>(fill_gap) << " Card To Play: "
-                                                                    << hand[std::get<2>(fill_gap)]->value
-                                                                    << " Discard: ";
+                  << hand[std::get<2>(fill_gap)]->value
+                  << " Discard: ";
 #endif
         // can safetly fill a gap
         // fill a gap turn
@@ -209,12 +208,10 @@ BinaryPartitionStrategy::negotiate_discard_phase(const GameManager &GM, const st
                                                  const std::vector<int> current_offer) {
     discard_negotiation_round++;
 #ifdef PRINT_TURNS
-    std::cout << "Discard Phase: safe to discard: ";
+    if (discard_negotiation_round == 1) {
+        std::cout << "Discard Phase: safe to discard: ";
+    }
 #endif
-
-    //TODO problem: if e.g. only player discards all ant the others nothing
-    //they should discard roughly equal
-
 
     //TODO code duplication
     int num_safe_discards = 0;
@@ -222,21 +219,27 @@ BinaryPartitionStrategy::negotiate_discard_phase(const GameManager &GM, const st
         if (is_card_safe_to_discard(GM, i, hand)) {
             num_safe_discards++;
 #ifdef PRINT_TURNS
-            std::cout << hand[i]->value << ", ";
+            if (discard_negotiation_round == 1) {
+                std::cout << hand[i]->value << ", ";
+            }
 #endif
         }
     }
 #ifdef PRINT_TURNS
-    std::cout << "\n";
+    if (discard_negotiation_round == 1) {
+        std::cout << "\n";
+    }
 #endif
     if (discard_negotiation_round == 1) {
-        return num_safe_discards;
+        return num_safe_discards > 0 ? 1 : 0;
     }
+
+    int my_offer = current_offer[player_number];
     // operator + is default for accumulate
     // agreed on discarding too much
     if (std::accumulate(current_offer.begin(), current_offer.end(), 0) > NUM_DISCARD_DISCARD_PHASE) {
-        int my_offer = current_offer[player_number];
-        if (discard_negotiation_round % GM.get_num_players() == player_number) {
+
+        if (discard_negotiation_round % GM.get_num_players() == player_number || my_offer > num_safe_discards) {
             my_offer--;
         }
         return my_offer;
@@ -244,12 +247,23 @@ BinaryPartitionStrategy::negotiate_discard_phase(const GameManager &GM, const st
     // not enough
     assert(std::accumulate(current_offer.begin(), current_offer.end(), 0) < NUM_DISCARD_DISCARD_PHASE);
 
-    assert(false); // TODO IMPLEMENT
+    if (my_offer < num_safe_discards) { return my_offer + 1; }
+
+
+    int min_delta = 0; // delta to self is 0
+    for (auto offer: current_offer) {
+        min_delta = std::min(min_delta, my_offer - offer);
+    }
+    if (std::abs(min_delta) >= draw_size_difference) {
+        return my_offer + 1;
+        // dont grow the difference between offers too large
+    }
+    return my_offer;
+
 }
 
 Turn BinaryPartitionStrategy::perform_discard(const GameManager &GM, const std::vector<std::unique_ptr<Card>> &hand,
                                               const std::vector<int> negotiation_result) {
-
 
     Turn turn;
     turn.is_discard_phase = true;
@@ -262,20 +276,35 @@ Turn BinaryPartitionStrategy::perform_discard(const GameManager &GM, const std::
     }
     int num_to_discard = negotiation_result[player_number];
 
-    if (num_safe_discards <= num_to_discard) {
-        // todo code duplication
-        for (int i = 0; i < hand.size() && num_to_discard > 0; ++i) {
-            if (is_card_safe_to_discard(GM, i, hand)) {
-                num_to_discard--;
-                turn.cards_to_discard.push_back(i);
-                discarded_values.push_back(hand[i]->value);
-            }
+    std::cout << num_to_discard << "\n";
+
+    // todo code duplication
+    // discard all safe cards
+    for (int i = 0; i < hand.size() && num_to_discard > 0; ++i) {
+        if (is_card_safe_to_discard(GM, i, hand)) {
+            num_to_discard--;
+            turn.cards_to_discard.push_back(i);
+            discarded_values.push_back(hand[i]->value);
         }
-        return turn;
     }
 
-    //TODO implement
-    assert(false);
+    // discard at random if more is needed
+    while (num_to_discard > 0) {
+        int to_discard = rng() % hand.size();
+        if (std::find(turn.cards_to_discard.begin(), turn.cards_to_discard.end(), to_discard) !=
+            turn.cards_to_discard.end()) {
+            continue;// invalid
+        }
+        if (hand[to_discard]->value == Card::FINISH) {
+            continue;// dont discard this as it can result in loss
+        }
+        // discard this
+        num_to_discard--;
+        turn.cards_to_discard.push_back(to_discard);
+        discarded_values.push_back(hand[to_discard]->value);
+
+    }
+    return turn;
 }
 
 
