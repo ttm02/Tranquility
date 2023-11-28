@@ -5,13 +5,17 @@
 #ifndef TRANQUILITY_BINARYPARTITIONSTRATEGY_H
 #define TRANQUILITY_BINARYPARTITIONSTRATEGY_H
 
+#include <random>
 #include "PlayerAgent.h"
 #include "GameManager.h"
+
 
 class BinaryPartitionStrategy : public PlayerAgent {
 
 public:
-    explicit BinaryPartitionStrategy(unsigned int player_number) : PlayerAgent(player_number) {}
+    explicit BinaryPartitionStrategy(std::default_random_engine &rng, unsigned int player_number) : rng(rng),
+                                                                                                    PlayerAgent(
+                                                                                                            player_number) {}
 
     void register_move(unsigned int player_number, Turn turn_made) override {};
 
@@ -42,6 +46,8 @@ private:
             return accu + (v == Card::FINISH);
         });
     }
+
+    std::default_random_engine &rng;
 
     int discard_safety_margin = 1;
     int num_unsafe_turns = 0;// for statistics
