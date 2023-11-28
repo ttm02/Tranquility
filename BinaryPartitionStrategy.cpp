@@ -9,7 +9,7 @@
 #include <iostream>
 
 
-//#define PRINT_TURNS
+#define PRINT_TURNS
 
 
 //Problem: one player ran out of cards, The other player had finish and the required missing card (including spare cards to fit it in) in hand
@@ -57,6 +57,19 @@ Turn BinaryPartitionStrategy::make_turn(const GameManager &GM, const std::vector
     }
     // END Check for lost, start, finish
 
+
+
+// debugging why one player rn out of cards before the other
+/*
+    if (player_number==0){
+        std::cout << "Draw sizes: ";
+        for (int i = 0; i < GM.get_num_players(); ++i) {
+            std::cout << GM.get_deck_size(i) << ", ";
+
+        }
+        std::cout << "\n";
+    }
+*/
 
 
 
@@ -198,6 +211,11 @@ BinaryPartitionStrategy::negotiate_discard_phase(const GameManager &GM, const st
 #ifdef PRINT_TURNS
     std::cout << "Discard Phase: safe to discard: ";
 #endif
+
+    //TODO problem: if e.g. only player discards all ant the others nothing
+    //they should discard roughly equal
+
+
     //TODO code duplication
     int num_safe_discards = 0;
     for (int i = 0; i < hand.size(); ++i) {
