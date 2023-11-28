@@ -195,15 +195,22 @@ int
 BinaryPartitionStrategy::negotiate_discard_phase(const GameManager &GM, const std::vector<std::unique_ptr<Card>> &hand,
                                                  const std::vector<int> current_offer) {
     discard_negotiation_round++;
-
+#ifdef PRINT_TURNS
+    std::cout << "Discard Phase: safe to discard: ";
+#endif
     //TODO code duplication
     int num_safe_discards = 0;
     for (int i = 0; i < hand.size(); ++i) {
         if (is_card_safe_to_discard(GM, i, hand)) {
             num_safe_discards++;
+#ifdef PRINT_TURNS
             std::cout << hand[i]->value << ", ";
+#endif
         }
     }
+#ifdef PRINT_TURNS
+    std::cout << "\n";
+#endif
     if (discard_negotiation_round == 1) {
         return num_safe_discards;
     }
@@ -233,7 +240,6 @@ Turn BinaryPartitionStrategy::perform_discard(const GameManager &GM, const std::
     for (int i = 0; i < hand.size(); ++i) {
         if (is_card_safe_to_discard(GM, i, hand)) {
             num_safe_discards++;
-            std::cout << hand[i]->value << ", ";
         }
     }
     int num_to_discard = negotiation_result[player_number];
@@ -245,10 +251,8 @@ Turn BinaryPartitionStrategy::perform_discard(const GameManager &GM, const std::
                 num_to_discard--;
                 turn.cards_to_discard.push_back(i);
                 discarded_values.push_back(hand[i]->value);
-                //std::cout << hand[i]->value << ", ";
             }
         }
-        std::cout << "\n";
         return turn;
     }
 
