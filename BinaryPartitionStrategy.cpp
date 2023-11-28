@@ -76,7 +76,29 @@ Turn BinaryPartitionStrategy::make_turn(const GameManager &GM, const std::vector
     }
     std::cout << "\n";
 
-    if (num_safe_discards >= std::get<0>(fill_gap)) {
+    //check for large draw stack size difference
+    bool has_lowest_number_of_cards = true;
+
+    for (int i = 0; i < GM.get_num_players(); ++i) {
+        if (i != player_number) {
+            auto other_size = GM.get_deck_size(i);
+            auto my_size = GM.get_deck_size(player_number);
+            if (my_size + draw_size_difference >= other_size) {
+                has_lowest_number_of_cards = false;
+            }
+
+        }
+    }
+
+    // perform a "fill middle" turn instead if lowest num cards and is able to do so
+    bool should_perform_middle_turn = std::get<1>(middle_gap) != -1
+                                      && has_lowest_number_of_cards;
+    if (should_perform_middle_turn) {
+        assert(false);
+    }
+
+
+    if (num_safe_discards >= std::get<0>(fill_gap) && not should_perform_middle_turn) {
         std::cout << "fill gap position: " << std::get<1>(fill_gap) << " Card To Play: "
                                                                     << hand[std::get<2>(fill_gap)]->value
                                                                     << " Discard: ";

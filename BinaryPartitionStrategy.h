@@ -48,6 +48,8 @@ private:
 
     int discard_negotiation_round = 0;
 
+    static const int draw_size_difference = 2;
+
 };
 
 
