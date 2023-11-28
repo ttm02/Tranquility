@@ -258,6 +258,13 @@ BinaryPartitionStrategy::negotiate_discard_phase(const GameManager &GM, const st
         return my_offer + 1;
         // dont grow the difference between offers too large
     }
+
+    if (discard_negotiation_round % GM.get_num_players() == player_number &&
+        discard_negotiation_round > GM.get_num_players() * 10) {
+        // negotiation takes to long: we need to discard more even if not safe to do so
+        return my_offer + 1;
+    }
+
     return my_offer;
 
 }
