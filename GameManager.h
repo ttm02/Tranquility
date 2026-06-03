@@ -76,6 +76,20 @@ public:
     Winnability is_winnable(uint64_t node_budget = 5'000'000,
                             unsigned int current_player = 0) const;
 
+    // Lightweight LB-only feasibility check for a tentative turn. Simulates the
+    // turn (removing `played_value` from pool, updating the grid, removing
+    // `discard_values` from pool, applying the START + discard-phase pool
+    // accounting) and returns whether the resulting state still satisfies
+    // lower_bound_gap_cost ≤ pool_budget. Use this from a strategy to filter
+    // candidate discards: a discard set that makes this return false will
+    // definitely lose. Soundness: false ⇒ losing; true ⇒ not provably losing
+    // (might still be losing in deeper search, but the obvious traps are caught).
+    // played_value: 0 if no play, else the card value (island, START, or FINISH).
+    // position: grid position for an island play; -1 for START/FINISH/no-play.
+    // discard_values: values of cards moved from hand to discard pile.
+    bool is_post_turn_lb_feasible(int played_value, int position,
+                                  const std::vector<int> &discard_values) const;
+
     template<class R>
     static bool RunNewGame(std::vector<std::unique_ptr<PlayerAgent>> strategies, R &rng);
 

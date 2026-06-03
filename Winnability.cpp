@@ -480,6 +480,44 @@ namespace {
     }
 } // anonymous namespace
 
+bool GameManager::is_post_turn_lb_feasible(int played_value, int position,
+                                           const std::vector<int> &discard_values) const {
+    if (get_num_players() != 2) return true; // helper only supports 2P
+    SearchState s = from_game(*this, 0);
+
+    auto pop_value = [&](int v) {
+        for (int pi = 0; pi < 2; ++pi) {
+            auto &h = s.p[pi].hand;
+            auto it = std::find(h.begin(), h.end(), v);
+            if (it != h.end()) {
+                h.erase(it);
+                return;
+            }
+            auto &d = s.p[pi].draw_remaining;
+            auto it2 = std::find(d.begin(), d.end(), v);
+            if (it2 != d.end()) {
+                d.erase(it2);
+                return;
+            }
+        }
+    };
+
+    if (played_value != 0) {
+        pop_value(played_value);
+        if (played_value == Card::START) {
+            s.has_start = true;
+            s.remaining_discard_phase = NUM_DISCARD_DISCARD_PHASE;
+        } else if (played_value == Card::FINISH) {
+            s.has_finish = true;
+        } else if (position >= 0 && position < GRID_LEN) {
+            s.area[position] = played_value;
+        }
+    }
+    for (int v: discard_values) pop_value(v);
+
+    return lower_bound_gap_cost(s) <= s.pool_budget();
+}
+
 Winnability GameManager::is_winnable(uint64_t node_budget, unsigned int current_player) const {
     if (get_num_players() != 2) {
         // TODO: 3-5 player support. Discard-phase logic is 2P-specific.

@@ -176,16 +176,46 @@ Turn BinaryPartitionStrategy::make_turn(const GameManager &GM, const std::vector
         turn.position_played = std::get<1>(fill_gap);
         turn.card_to_play = std::get<2>(fill_gap);
         int num_to_discard = GM.area.get_num_discard(turn.position_played, hand[turn.card_to_play]->value);
-        for (int i = 0; i < hand.size() && num_to_discard > 0; ++i) {
-            if (is_card_safe_to_discard(GM, i, hand)) {
-                assert(i != turn.card_to_play);
-                num_to_discard--;
-                turn.cards_to_discard.push_back(i);
-                discarded_values.push_back(hand[i]->value);
+        int played_value = hand[turn.card_to_play]->value;
+
+        auto already_picked = [&](int i) {
+            return std::find(turn.cards_to_discard.begin(), turn.cards_to_discard.end(),
+                             (unsigned) i) != turn.cards_to_discard.end();
+        };
+        auto try_add = [&](int i) -> bool {
+            std::vector<int> dv;
+            for (auto idx: turn.cards_to_discard) dv.push_back(hand[idx]->value);
+            dv.push_back(hand[i]->value);
+            if (!GM.is_post_turn_lb_feasible(played_value, turn.position_played, dv)) return false;
+            turn.cards_to_discard.push_back(i);
+            discarded_values.push_back(hand[i]->value);
 #ifdef PRINT_TURNS
-                std::cout << hand[i]->value << ", ";
+            std::cout << hand[i]->value << ", ";
 #endif
-            }
+            return true;
+        };
+
+        // Phase 1: locally-safe AND keeps LB ≤ pool_budget.
+        for (int i = 0; i < hand.size() && (int) turn.cards_to_discard.size() < num_to_discard; ++i) {
+            if (i == turn.card_to_play || already_picked(i)) continue;
+            if (!is_card_safe_to_discard(GM, i, hand)) continue;
+            try_add(i);
+        }
+        // Phase 2: relax local-safety, still require LB feasibility.
+        for (int i = 0; i < hand.size() && (int) turn.cards_to_discard.size() < num_to_discard; ++i) {
+            if (i == turn.card_to_play || already_picked(i)) continue;
+            try_add(i);
+        }
+        // Phase 3: original fallback — locally-safe regardless of LB (in case
+        // the LB rejects every option and we still need to play something).
+        for (int i = 0; i < hand.size() && (int) turn.cards_to_discard.size() < num_to_discard; ++i) {
+            if (i == turn.card_to_play || already_picked(i)) continue;
+            if (!is_card_safe_to_discard(GM, i, hand)) continue;
+            turn.cards_to_discard.push_back(i);
+            discarded_values.push_back(hand[i]->value);
+#ifdef PRINT_TURNS
+            std::cout << hand[i]->value << ", ";
+#endif
         }
 #ifdef PRINT_TURNS
         std::cout << "\n";
@@ -217,17 +247,41 @@ Turn BinaryPartitionStrategy::make_turn(const GameManager &GM, const std::vector
 #ifdef PRINT_TURNS
         std::cout << "Discard 2: ";
 #endif
-        int num_to_discard = 2;
-        for (int i = 0; i < hand.size() && num_to_discard > 0; ++i) {
-            if (is_card_safe_to_discard(GM, i, hand)) {
-                assert(i != turn.card_to_play);
-                num_to_discard--;
-                turn.cards_to_discard.push_back(i);
-                discarded_values.push_back(hand[i]->value);
+        const int num_to_discard = 2;
+        auto already_picked = [&](int i) {
+            return std::find(turn.cards_to_discard.begin(), turn.cards_to_discard.end(),
+                             (unsigned) i) != turn.cards_to_discard.end();
+        };
+        auto try_add = [&](int i) -> bool {
+            std::vector<int> dv;
+            for (auto idx: turn.cards_to_discard) dv.push_back(hand[idx]->value);
+            dv.push_back(hand[i]->value);
+            if (!GM.is_post_turn_lb_feasible(/*played_value=*/0, /*position=*/-1, dv)) return false;
+            turn.cards_to_discard.push_back(i);
+            discarded_values.push_back(hand[i]->value);
 #ifdef PRINT_TURNS
-                std::cout << hand[i]->value << ", ";
+            std::cout << hand[i]->value << ", ";
 #endif
-            }
+            return true;
+        };
+
+        for (int i = 0; i < hand.size() && (int) turn.cards_to_discard.size() < num_to_discard; ++i) {
+            if (already_picked(i)) continue;
+            if (!is_card_safe_to_discard(GM, i, hand)) continue;
+            try_add(i);
+        }
+        for (int i = 0; i < hand.size() && (int) turn.cards_to_discard.size() < num_to_discard; ++i) {
+            if (already_picked(i)) continue;
+            try_add(i);
+        }
+        for (int i = 0; i < hand.size() && (int) turn.cards_to_discard.size() < num_to_discard; ++i) {
+            if (already_picked(i)) continue;
+            if (!is_card_safe_to_discard(GM, i, hand)) continue;
+            turn.cards_to_discard.push_back(i);
+            discarded_values.push_back(hand[i]->value);
+#ifdef PRINT_TURNS
+            std::cout << hand[i]->value << ", ";
+#endif
         }
 #ifdef PRINT_TURNS
         std::cout << "\n";
@@ -331,31 +385,39 @@ Turn BinaryPartitionStrategy::perform_discard(const GameManager &GM, const std::
 
     std::cout << num_to_discard << "\n";
 
-    // todo code duplication
-    // discard all safe cards
-    for (int i = 0; i < hand.size() && num_to_discard > 0; ++i) {
-        if (is_card_safe_to_discard(GM, i, hand)) {
-            num_to_discard--;
-            turn.cards_to_discard.push_back(i);
-            discarded_values.push_back(hand[i]->value);
-        }
-    }
+    auto already_picked = [&](int i) {
+        return std::find(turn.cards_to_discard.begin(), turn.cards_to_discard.end(),
+                         (unsigned) i) != turn.cards_to_discard.end();
+    };
+    auto try_add = [&](int i) -> bool {
+        std::vector<int> dv;
+        for (auto idx: turn.cards_to_discard) dv.push_back(hand[idx]->value);
+        dv.push_back(hand[i]->value);
+        if (!GM.is_post_turn_lb_feasible(/*played_value=*/0, /*position=*/-1, dv)) return false;
+        turn.cards_to_discard.push_back(i);
+        discarded_values.push_back(hand[i]->value);
+        return true;
+    };
 
-    // discard at random if more is needed
-    while (num_to_discard > 0) {
+    // Phase 1: locally-safe AND LB-feasible.
+    for (int i = 0; i < hand.size() && (int) turn.cards_to_discard.size() < num_to_discard; ++i) {
+        if (already_picked(i)) continue;
+        if (!is_card_safe_to_discard(GM, i, hand)) continue;
+        try_add(i);
+    }
+    // Phase 2: relax local-safety, keep LB-feasibility.
+    for (int i = 0; i < hand.size() && (int) turn.cards_to_discard.size() < num_to_discard; ++i) {
+        if (already_picked(i)) continue;
+        if (hand[i]->value == Card::FINISH) continue; // never volunteer the last FINISH
+        try_add(i);
+    }
+    // Phase 3: original fallback — random non-FINISH cards.
+    while ((int) turn.cards_to_discard.size() < num_to_discard) {
         int to_discard = rng() % hand.size();
-        if (std::find(turn.cards_to_discard.begin(), turn.cards_to_discard.end(), to_discard) !=
-            turn.cards_to_discard.end()) {
-            continue;// invalid
-        }
-        if (hand[to_discard]->value == Card::FINISH) {
-            continue;// dont discard this as it can result in loss
-        }
-        // discard this
-        num_to_discard--;
+        if (already_picked(to_discard)) continue;
+        if (hand[to_discard]->value == Card::FINISH) continue;
         turn.cards_to_discard.push_back(to_discard);
         discarded_values.push_back(hand[to_discard]->value);
-
     }
     return turn;
 }
