@@ -9,15 +9,52 @@
 #include <iostream>
 
 
-//TOOD can we determine if the 2p game with default rng is actually winable?
-// is it possible to create an bool is_winnable(GameManager& GM) method?
+// See GameManager::is_winnable (Winnability.cpp) for the oracle that
+// answers whether the current position admits a winning play sequence
+// under perfect-information collusion. Used below to flag avoidable
+// losses when this strategy gives up.
 
 
 #define PRINT_TURNS
 
+// Run the winnability oracle on every has_lost branch to flag avoidable
+// losses. The oracle is expensive (seconds per call); leave off for normal
+// simulation, switch on for debugging.
+constexpr bool DEBUG_AVOIDABLE_LOSS = false;
+
+// Call the oracle before every turn to trace when the position transitions
+// from winnable to unwinnable — the turn at which that flip happens is the
+// move that broke the game.
+constexpr bool DEBUG_TRACE_WINNABILITY = false;
+// Trace mode only invokes the oracle in the DFS window (gaps ≤ 12), where
+// it's exact. A few million nodes is enough for late-game DFS to converge
+// most of the time; raise this if many turns return Unknown.
+constexpr uint64_t TRACE_WINNABILITY_BUDGET = 5'000'000;
+
 
 //Problem: one player ran out of cards, The other player had finish and the required missing card (including spare cards to fit it in) in hand
 Turn BinaryPartitionStrategy::make_turn(const GameManager &GM, const std::vector<std::unique_ptr<Card>> &hand) {
+    if (DEBUG_TRACE_WINNABILITY) {
+        static int trace_turn = 0;
+        ++trace_turn;
+        int gaps = GM.area.get_num_gaps();
+        // Beam search at early/mid game is too slow per call to run on every
+        // turn. Only query the oracle when DFS will run (gaps ≤ 12), so each
+        // call is fast and the answer is exact Won/Lost.
+        if (gaps <= 12) {
+            auto w = GM.is_winnable(TRACE_WINNABILITY_BUDGET, player_number);
+            const char *label = (w == Winnability::Won)
+                                    ? "Won"
+                                    : (w == Winnability::Lost)
+                                          ? "Lost"
+                                          : "Unknown";
+            std::cout << "[oracle] turn " << trace_turn << " player " << player_number
+                    << " cells_left=" << gaps << ": " << label << std::endl;
+        } else {
+            std::cout << "[oracle] turn " << trace_turn << " player " << player_number
+                    << " cells_left=" << gaps << ": skipped (out of DFS window)" << std::endl;
+        }
+    }
 
     //DEBUG:
     print_hand(hand);
@@ -36,6 +73,11 @@ Turn BinaryPartitionStrategy::make_turn(const GameManager &GM, const std::vector
             //std::cout << "\n";
         }
         std::cout << "HAS LOST\n";
+        if (DEBUG_AVOIDABLE_LOSS) {
+            if (GM.is_winnable(200'000, player_number) == Winnability::Won) {
+                std::cout << "[oracle] avoidable loss detected\n";
+            }
+        }
         return turn;
     }
     turn.has_lost = false;

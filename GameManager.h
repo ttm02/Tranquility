@@ -19,6 +19,8 @@
 
 struct Turn;
 
+enum class Winnability { Won, Lost, Unknown };
+
 class GameManager {
 
 public:
@@ -51,6 +53,28 @@ public:
         //TODO refactroring: use same constant when creating the deck
         return 5;
     }
+
+    const std::vector<std::unique_ptr<Card> > &get_hand(unsigned int player_number) const {
+        assert(player_number < players.size());
+        return players[player_number]->hand;
+    }
+
+    const std::vector<std::unique_ptr<Card> > &get_draw(unsigned int player_number) const {
+        assert(player_number < players.size());
+        return players[player_number]->draw;
+    }
+
+    // Winnability oracle. Perfect-info collusion semantics: assumes a colluding
+    // pair of players who can see every hand and draw pile in fixed order.
+    // Won     : a complete legal play sequence ending in FINISH was found.
+    // Lost    : the sound lower-bound check proved no completion exists.
+    // Unknown : node_budget exhausted before a verdict.
+    // `current_player` is whose turn the search starts at — pass the calling
+    // agent's player_number when invoking from inside make_turn; leave as 0
+    // for between-turn calls (e.g., pre-game filtering).
+    // 2-player only for v1. See Winnability.cpp for algorithm details.
+    Winnability is_winnable(uint64_t node_budget = 5'000'000,
+                            unsigned int current_player = 0) const;
 
     template<class R>
     static bool RunNewGame(std::vector<std::unique_ptr<PlayerAgent>> strategies, R &rng);

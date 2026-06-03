@@ -16,4 +16,5 @@ add_executable(tranquility main.cpp
         HumanPlayer.cpp
         HumanPlayer.h
         BinaryPartitionStrategy.cpp
-        BinaryPartitionStrategy.h)
+        BinaryPartitionStrategy.h
+        Winnability.cpp)
