@@ -545,8 +545,14 @@ std::tuple<int, int, int> BinaryPartitionStrategy::find_best_middle_card_to_play
                 // otherwise: no space to play in between without adjacency
 
                 unsigned current_pos = i;
+                // i == LENGTH is the virtual right-edge sentinel — there is no
+                // card past the end of the area, so reading get_area()[LENGTH]
+                // would be out of bounds (the vector is exactly LENGTH long).
+                // Treat that case as "no right neighbor" (val_right = sentinel,
+                // placement allowed up to LENGTH-1).
+                bool right_is_edge = (i == PlayArea::LENGTH);
                 unsigned val_right = Card::MAX_VALUE + 1;
-                if (GM.area.get_area()[i] != nullptr) {
+                if (!right_is_edge && GM.area.get_area()[i] != nullptr) {
                     val_right = GM.area.get_area()[i]->value;
                 }
                 unsigned val_left = 1 - 1;
@@ -559,7 +565,14 @@ std::tuple<int, int, int> BinaryPartitionStrategy::find_best_middle_card_to_play
                     //but the endings needs to be included fully
                     int left_begin_search =
                             GM.area.get_area()[previous_played_pos] != nullptr ? previous_played_pos + 2 : 0;
-                    int right_begin_search = GM.area.get_area()[current_pos] != nullptr ? current_pos - 2 : current_pos;
+                    int right_begin_search;
+                    if (right_is_edge) {
+                        // Open-ended right gap: positions 0..LENGTH-1 are valid;
+                        // current_pos itself (== LENGTH) is not a playable cell.
+                        right_begin_search = PlayArea::LENGTH - 1;
+                    } else {
+                        right_begin_search = GM.area.get_area()[current_pos] != nullptr ? current_pos - 2 : current_pos;
+                    }
 
                     int best_pos = find_pos_for_card(hand[j]->value,
                                                      left_begin_search, right_begin_search,

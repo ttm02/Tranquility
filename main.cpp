@@ -34,7 +34,7 @@ int main() {
 
     // TODO use a seed
     auto rng = std::default_random_engine{};
-    int num_games = 1;
+    int num_games = 10;
 
     int num_won = 0;
     for (int i = 0; i < num_games; ++i) {
