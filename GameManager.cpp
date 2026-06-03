@@ -83,9 +83,10 @@ bool GameManager::run_game() {
                         players[1]->hand.push_back(std::move(players[1]->draw.back()));
                         players[1]->draw.pop_back();
                     }
+                }
                     auto negotiation_result = run_discard_phase_negotiation();
                     run_discard_phase_execution(negotiation_result);
-                }
+
             }
         }
     }
