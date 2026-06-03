@@ -9,15 +9,19 @@
 #include <iostream>
 
 
-//#define PRINT_TURNS
+//TOOD can we determine if the 2p game with default rng is actually winable?
+// is it possible to create an bool is_winnable(GameManager& GM) method?
+
+
+#define PRINT_TURNS
 
 
 //Problem: one player ran out of cards, The other player had finish and the required missing card (including spare cards to fit it in) in hand
 Turn BinaryPartitionStrategy::make_turn(const GameManager &GM, const std::vector<std::unique_ptr<Card>> &hand) {
 
     //DEBUG:
-    //print_hand(hand);
-    //GM.area.print();
+    print_hand(hand);
+    GM.area.print();
 
     //TODO extract this as utility to base class
     Turn turn;
