@@ -125,7 +125,30 @@ Turn BinaryPartitionStrategy::make_turn(const GameManager &GM, const std::vector
 
     auto middle_gap = find_best_middle_card_to_play(GM, hand);
 
-    auto fill_gap = find_best_adjacent(GM, hand);
+    // LB-aware fill-gap selection: lowest-cost (card, position) play with
+    // cost > 0 whose post-play state still passes the LB feasibility check
+    // (i.e., the move doesn't lock in an unwinnable pool/grid combo). Falls
+    // back to the original cheapest-regardless of feasibility if nothing
+    // passes — that lets the agent still make SOME move when in a corner.
+    auto fill_gap = find_best_adjacent(GM, hand); {
+        int best_cost = std::numeric_limits<int>::max();
+        int best_pos = -1;
+        int best_card_idx = -1;
+        for (int pos = 0; pos < PlayArea::LENGTH; ++pos) {
+            for (int j = 0; j < (int) hand.size(); ++j) {
+                int cost = GM.area.get_num_discard(pos, hand[j]->value);
+                if (cost <= 0) continue;
+                if (cost >= best_cost) continue;
+                if (!GM.is_post_turn_lb_feasible(hand[j]->value, pos, {})) continue;
+                best_cost = cost;
+                best_pos = pos;
+                best_card_idx = j;
+            }
+        }
+        if (best_pos != -1) {
+            fill_gap = std::make_tuple(best_cost, best_pos, best_card_idx);
+        }
+    }
 
 #ifdef PRINT_TURNS
     std::cout << "Safe to discard: ";
@@ -143,25 +166,41 @@ Turn BinaryPartitionStrategy::make_turn(const GameManager &GM, const std::vector
     std::cout << "\n";
 #endif
 
-    //check for large draw stack size difference
-    bool has_lowest_number_of_cards = true;
-
+    // Behind on draw at all: any other player has strictly more remaining
+    // draw cards. The old check required a 2-card lead by everyone; that was
+    // too strict — under symmetric play, players stay within 1–2 cards of each
+    // other so the threshold never trips. Loosening it to "behind by any"
+    // gives the agent a chance to slow down whenever its opponent has buried
+    // cards still to dig out.
+    bool has_lowest_number_of_cards = false;
     for (int i = 0; i < GM.get_num_players(); ++i) {
-        if (i != player_number) {
-            auto other_size = GM.get_deck_size(i);
-            auto my_size = GM.get_deck_size(player_number);
-            if (my_size + draw_size_difference >= other_size) {
-                has_lowest_number_of_cards = false;
-            }
-
+        if (i != player_number && GM.get_deck_size(player_number) < GM.get_deck_size(i)) {
+            has_lowest_number_of_cards = true;
+            break;
         }
     }
 
-    // perform a "fill middle" turn instead if lowest num cards and is able to do so
-    bool should_perform_middle_turn = std::get<1>(middle_gap) != -1
-                                      && has_lowest_number_of_cards;
+    // Always prefer a "fill middle" turn when available: it places a card at
+    // a cell whose immediate neighbors are still empty (cost = 0), burning only
+    // ONE card from the pool that turn. Fill-gap plays cost 1+discards, which
+    // depletes the pool ≥ twice as fast. The original "only when behind" gate
+    // was too narrow — under symmetric play, both players stayed within 1–2
+    // cards and the gate never tripped. By always preferring middle when one
+    // is available, both players slow their pool consumption, which gives the
+    // game enough turns for buried low values to surface from the deeper
+    // player's draw pile. has_lowest_number_of_cards is kept around for the
+    // potential heuristic value of biasing the *middle pick* itself, but the
+    // gate is removed.
+    (void) has_lowest_number_of_cards;
+    bool should_perform_middle_turn = std::get<1>(middle_gap) != -1;
     if (should_perform_middle_turn) {
-        assert(false);
+#ifdef PRINT_TURNS
+        std::cout << "middle position (pool-preserve): " << std::get<1>(middle_gap)
+                << " Card To Play: " << hand[std::get<2>(middle_gap)]->value << "\n";
+#endif
+        turn.position_played = std::get<1>(middle_gap);
+        turn.card_to_play = std::get<2>(middle_gap);
+        return turn;
     }
 
 
@@ -242,8 +281,12 @@ Turn BinaryPartitionStrategy::make_turn(const GameManager &GM, const std::vector
 
     }
 
-    if (num_safe_discards >= 2) {
-        // do a discard turn
+    if (hand.size() >= 2) {
+        // Voluntary discard 2: do it whenever the hand has ≥ 2 cards. Previously
+        // gated on `num_safe_discards >= 2`, which left no fallback when zero
+        // cards were locally-safe — the agent then hit the "Invalid Turn" path.
+        // With the LB-aware discard selection below (and the truly-unconditional
+        // phase 3), discarding 2 is always at least as good as crashing.
 #ifdef PRINT_TURNS
         std::cout << "Discard 2: ";
 #endif
@@ -272,15 +315,33 @@ Turn BinaryPartitionStrategy::make_turn(const GameManager &GM, const std::vector
         }
         for (int i = 0; i < hand.size() && (int) turn.cards_to_discard.size() < num_to_discard; ++i) {
             if (already_picked(i)) continue;
+            if (hand[i]->value == Card::FINISH) continue; // don't volunteer FINISH
             try_add(i);
         }
+        // Phase 3: truly unconditional fallback. We've committed to discarding 2;
+        // if neither local-safety nor LB feasibility lets us pick enough, take
+        // whatever cards are left (still excluding FINISH). Without this the
+        // turn would be invalid and the game would crash.
         for (int i = 0; i < hand.size() && (int) turn.cards_to_discard.size() < num_to_discard; ++i) {
             if (already_picked(i)) continue;
-            if (!is_card_safe_to_discard(GM, i, hand)) continue;
+            if (hand[i]->value == Card::FINISH) continue;
             turn.cards_to_discard.push_back(i);
             discarded_values.push_back(hand[i]->value);
 #ifdef PRINT_TURNS
             std::cout << hand[i]->value << ", ";
+#endif
+        }
+        // Phase 4: true emergency — allow FINISH if hand has only FINISH cards
+        // left to fill the 2-discard quota. The rules force a discard turn when
+        // hand.size() > 1 and no legal play exists; otherwise the validator
+        // rejects the turn. We'd rather burn a FINISH (other FINISHes may still
+        // be in the shared pool) than crash.
+        for (int i = 0; i < hand.size() && (int) turn.cards_to_discard.size() < num_to_discard; ++i) {
+            if (already_picked(i)) continue;
+            turn.cards_to_discard.push_back(i);
+            discarded_values.push_back(hand[i]->value);
+#ifdef PRINT_TURNS
+            std::cout << hand[i]->value << "(!), ";
 #endif
         }
 #ifdef PRINT_TURNS
@@ -462,6 +523,20 @@ std::tuple<int, int, int> BinaryPartitionStrategy::find_best_middle_card_to_play
     unsigned int current_best_pos = -1;
     unsigned int current_card_to_play = -1;
     unsigned int current_best_delta = std::numeric_limits<int>::max();
+    int current_best_flexibility = std::numeric_limits<int>::max();
+
+    // Number of grid positions on which this value can legally be placed
+    // right now (cost ≥ 0). Lower count = card is more "constrained" —
+    // fewer alternative homes — so we'd rather place it now than risk it
+    // becoming unplaceable as neighbors fill in. Used as a tiebreaker on
+    // equal delta in middle-play candidate selection.
+    auto count_legal_positions = [&](int value) {
+        int count = 0;
+        for (int p = 0; p < PlayArea::LENGTH; ++p) {
+            if (GM.area.get_num_discard(p, value) >= 0) count++;
+        }
+        return count;
+    };
 
     for (int i = 0; i <= PlayArea::LENGTH; ++i) {
         if (GM.area.get_area()[i] != nullptr || i == PlayArea::LENGTH) {
@@ -497,8 +572,19 @@ std::tuple<int, int, int> BinaryPartitionStrategy::find_best_middle_card_to_play
                                                                   (double) (best_pos - previous_played_pos));
                     int delta = std::abs(hand[j]->value - approx_value_required);
 
+                    int new_flexibility = count_legal_positions(hand[j]->value);
 
-                    if (current_best_delta > delta
+                    // Lex compare on (delta, flexibility): smaller delta wins;
+                    // on equal delta, the more constrained card (fewer legal
+                    // positions on the grid) wins. The latter is what gets
+                    // hard-to-place values out of the hand before the only
+                    // slot that fits them is sealed off by adjacent placements.
+                    bool better =
+                            delta < (int) current_best_delta ||
+                            (delta == (int) current_best_delta &&
+                             new_flexibility < current_best_flexibility);
+
+                    if (better
                         && val_left < hand[j]->value &&
                         hand[j]->value < val_right
                             ) {
@@ -511,6 +597,7 @@ std::tuple<int, int, int> BinaryPartitionStrategy::find_best_middle_card_to_play
                                 val_right - hand[j]->value >= current_pos - best_pos;
                         if (is_valid) {
                             current_best_delta = delta;
+                            current_best_flexibility = new_flexibility;
                             current_card_to_play = j;
                             current_best_pos = best_pos;
                         }

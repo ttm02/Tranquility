@@ -1,6 +1,7 @@
 
 #include "GameManager.h"
 
+#include <algorithm>
 #include <cassert>
 #include <numeric>
 
@@ -26,9 +27,13 @@ void GameManager::run_discard_phase_execution(const std::vector<int> &negotiatio
         Turn discard_turn = p->strategy->perform_discard(*this, p->hand, negotiation_result);
         assert(discard_turn.is_valid(area, p->hand));
         assert(discard_turn.cards_to_discard.size() == negotiation_result[p->player_number]);
-        // perform the discard
+        // perform the discard. Erase from highest index down so that earlier
+        // erases don't shift later indices out from under us.
         //TODO bad smell: code duplication
-        for (auto d: discard_turn.cards_to_discard) {
+        std::vector<unsigned int> discard_indices(discard_turn.cards_to_discard.begin(),
+                                                  discard_turn.cards_to_discard.end());
+        std::sort(discard_indices.begin(), discard_indices.end(), std::greater<unsigned int>());
+        for (auto d: discard_indices) {
             p->discard.push_back(std::move(p->hand[d]));
             p->hand.erase(p->hand.begin() + d);
         }
@@ -53,15 +58,31 @@ bool GameManager::run_game() {
             }
             // track if start card was played
             bool enter_discard_phase = false;
-            // execute turn
+            // Execute turn. The played card and any discards are all referenced
+            // by hand index, so we must erase them from highest index down —
+            // erasing a lower index first would shift the remaining indices
+            // down by one and the next erase would hit the wrong card.
+            struct Removal {
+                unsigned int index;
+                bool is_play;
+            };
+            std::vector<Removal> removals;
             if (turn.card_to_play != -1) {
-                enter_discard_phase = p->hand[turn.card_to_play]->value == Card::START;
-                area.play_card(turn.position_played, std::move(p->hand[turn.card_to_play]));
-                p->hand.erase(p->hand.begin() + turn.card_to_play);
+                removals.push_back({(unsigned int) turn.card_to_play, true});
             }
             for (auto d: turn.cards_to_discard) {
-                p->discard.push_back(std::move(p->hand[d]));
-                p->hand.erase(p->hand.begin() + d);
+                removals.push_back({d, false});
+            }
+            std::sort(removals.begin(), removals.end(),
+                      [](const Removal &a, const Removal &b) { return a.index > b.index; });
+            for (auto &r: removals) {
+                if (r.is_play) {
+                    enter_discard_phase = p->hand[r.index]->value == Card::START;
+                    area.play_card(turn.position_played, std::move(p->hand[r.index]));
+                } else {
+                    p->discard.push_back(std::move(p->hand[r.index]));
+                }
+                p->hand.erase(p->hand.begin() + r.index);
             }
             // register turn with other players, so they know what is going on
             for (auto &other_p: players) {
